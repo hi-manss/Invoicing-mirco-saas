@@ -5,6 +5,7 @@ import admin from "./routes/admin";
 import products from "./routes/products";
 import customers from "./routes/customers";
 import invoices from "./routes/invoices";
+import inventory from "./routes/inventory";
 import { ensureBootstrapAdmin } from "./services/bootstrap.service";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -19,4 +20,5 @@ app.route("/api/admin", admin);
 app.route("/api/products", products);
 app.route("/api/customers", customers);
 app.route("/api/invoices", invoices);
+app.route("/api/inventory", inventory);
 export default app;
