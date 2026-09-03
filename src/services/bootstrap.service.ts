@@ -31,7 +31,7 @@ export async function ensureBootstrapAdmin(env: Env) {
       email,
       passwordHash,
       role: 1,
-      isActive: true
+      isDeleted: false
     });
   } catch {
     // Another request may have created the same admin
