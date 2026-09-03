@@ -21,34 +21,23 @@ const productRoutes = new Hono<{
   };
 }>();
 
-/*
- * Everyone authenticated can view products.
- */
 productRoutes.get("/", requireAuth, async (c) => {
   const db = drizzle(c.env.DB);
 
   const result = await db
     .select()
     .from(products)
-    .where(eq(products.isActive, true))
+    .where(eq(products.isDeleted, false))
     .orderBy(desc(products.id));
 
-  return c.json({
-    products: result
-  });
+  return c.json({ products: result });
 });
 
-/*
- * Get one product.
- */
 productRoutes.get("/:id", requireAuth, async (c) => {
   const id = Number(c.req.param("id"));
 
   if (!Number.isInteger(id)) {
-    return c.json(
-      { error: "Invalid product ID" },
-      400
-    );
+    return c.json({ error: "Invalid product ID" }, 400);
   }
 
   const db = drizzle(c.env.DB);
@@ -59,27 +48,18 @@ productRoutes.get("/:id", requireAuth, async (c) => {
     .where(
       and(
         eq(products.id, id),
-        eq(products.isActive, true)
+        eq(products.isDeleted, false)
       )
     )
     .limit(1);
 
   if (result.length === 0) {
-    return c.json(
-      { error: "Product not found" },
-      404
-    );
+    return c.json({ error: "Product not found" }, 404);
   }
 
-  return c.json({
-    product: result[0]
-  });
+  return c.json({ product: result[0] });
 });
 
-/*
- * Create product.
- * ADMIN only.
- */
 productRoutes.post(
   "/",
   requireAuth,
@@ -95,13 +75,8 @@ productRoutes.post(
       stockQuantity?: number;
     }>();
 
-    if (!body.name || !body.sku) {
-      return c.json(
-        {
-          error: "Name and SKU are required"
-        },
-        400
-      );
+    if (!body.name?.trim() || !body.sku?.trim()) {
+      return c.json({ error: "Name and SKU are required" }, 400);
     }
 
     if (
@@ -110,10 +85,7 @@ productRoutes.post(
       body.sellingPricePaise < 0
     ) {
       return c.json(
-        {
-          error:
-            "sellingPricePaise must be a non-negative integer"
-        },
+        { error: "sellingPricePaise must be a non-negative integer" },
         400
       );
     }
@@ -126,12 +98,7 @@ productRoutes.post(
       gstRate < 0 ||
       gstRate > 100
     ) {
-      return c.json(
-        {
-          error: "GST rate must be between 0 and 100"
-        },
-        400
-      );
+      return c.json({ error: "GST rate must be between 0 and 100" }, 400);
     }
 
     if (
@@ -139,10 +106,7 @@ productRoutes.post(
       stockQuantity < 0
     ) {
       return c.json(
-        {
-          error:
-            "Stock quantity must be a non-negative integer"
-        },
+        { error: "Stock quantity must be a non-negative integer" },
         400
       );
     }
@@ -160,32 +124,20 @@ productRoutes.post(
           sellingPricePaise: body.sellingPricePaise,
           gstRate,
           stockQuantity,
-          isActive: true
+          isDeleted: false
         })
         .returning();
 
       return c.json(
-        {
-          message: "Product created",
-          product: result[0]
-        },
+        { message: "Product created", product: result[0] },
         201
       );
     } catch {
-      return c.json(
-        {
-          error: "SKU already exists"
-        },
-        409
-      );
+      return c.json({ error: "SKU already exists" }, 409);
     }
   }
 );
 
-/*
- * Update product.
- * ADMIN only.
- */
 productRoutes.put(
   "/:id",
   requireAuth,
@@ -194,10 +146,7 @@ productRoutes.put(
     const id = Number(c.req.param("id"));
 
     if (!Number.isInteger(id)) {
-      return c.json(
-        { error: "Invalid product ID" },
-        400
-      );
+      return c.json({ error: "Invalid product ID" }, 400);
     }
 
     const body = await c.req.json<{
@@ -216,56 +165,37 @@ productRoutes.put(
 
     if (body.name !== undefined) {
       if (!body.name.trim()) {
-        return c.json(
-          { error: "Name cannot be empty" },
-          400
-        );
+        return c.json({ error: "Name cannot be empty" }, 400);
       }
-
       updateData.name = body.name.trim();
     }
 
     if (body.sku !== undefined) {
       if (!body.sku.trim()) {
-        return c.json(
-          { error: "SKU cannot be empty" },
-          400
-        );
+        return c.json({ error: "SKU cannot be empty" }, 400);
       }
-
       updateData.sku = body.sku.trim();
     }
 
     if (body.hsnCode !== undefined) {
-      updateData.hsnCode =
-        body.hsnCode?.trim() || null;
+      updateData.hsnCode = body.hsnCode?.trim() || null;
     }
 
     if (body.unit !== undefined) {
-      updateData.unit =
-        body.unit.trim() || "PCS";
+      updateData.unit = body.unit.trim() || "PCS";
     }
 
-    if (
-      body.sellingPricePaise !== undefined
-    ) {
+    if (body.sellingPricePaise !== undefined) {
       if (
-        !Number.isInteger(
-          body.sellingPricePaise
-        ) ||
+        !Number.isInteger(body.sellingPricePaise) ||
         body.sellingPricePaise < 0
       ) {
         return c.json(
-          {
-            error:
-              "sellingPricePaise must be a non-negative integer"
-          },
+          { error: "sellingPricePaise must be a non-negative integer" },
           400
         );
       }
-
-      updateData.sellingPricePaise =
-        body.sellingPricePaise;
+      updateData.sellingPricePaise = body.sellingPricePaise;
     }
 
     if (body.gstRate !== undefined) {
@@ -274,38 +204,22 @@ productRoutes.put(
         body.gstRate < 0 ||
         body.gstRate > 100
       ) {
-        return c.json(
-          {
-            error:
-              "GST rate must be between 0 and 100"
-          },
-          400
-        );
+        return c.json({ error: "GST rate must be between 0 and 100" }, 400);
       }
-
       updateData.gstRate = body.gstRate;
     }
 
-    if (
-      body.stockQuantity !== undefined
-    ) {
+    if (body.stockQuantity !== undefined) {
       if (
-        !Number.isInteger(
-          body.stockQuantity
-        ) ||
+        !Number.isInteger(body.stockQuantity) ||
         body.stockQuantity < 0
       ) {
         return c.json(
-          {
-            error:
-              "Stock quantity must be a non-negative integer"
-          },
+          { error: "Stock quantity must be a non-negative integer" },
           400
         );
       }
-
-      updateData.stockQuantity =
-        body.stockQuantity;
+      updateData.stockQuantity = body.stockQuantity;
     }
 
     const db = drizzle(c.env.DB);
@@ -314,14 +228,16 @@ productRoutes.put(
       const result = await db
         .update(products)
         .set(updateData)
-        .where(eq(products.id, id))
+        .where(
+          and(
+            eq(products.id, id),
+            eq(products.isDeleted, false)
+          )
+        )
         .returning();
 
       if (result.length === 0) {
-        return c.json(
-          { error: "Product not found" },
-          404
-        );
+        return c.json({ error: "Product not found" }, 404);
       }
 
       return c.json({
@@ -329,23 +245,11 @@ productRoutes.put(
         product: result[0]
       });
     } catch {
-      return c.json(
-        {
-          error: "SKU already exists"
-        },
-        409
-      );
+      return c.json({ error: "SKU already exists" }, 409);
     }
   }
 );
 
-/*
- * Soft delete product.
- * ADMIN only.
- *
- * We don't physically delete it because
- * invoice_items may reference this product.
- */
 productRoutes.delete(
   "/:id",
   requireAuth,
@@ -354,10 +258,7 @@ productRoutes.delete(
     const id = Number(c.req.param("id"));
 
     if (!Number.isInteger(id)) {
-      return c.json(
-        { error: "Invalid product ID" },
-        400
-      );
+      return c.json({ error: "Invalid product ID" }, 400);
     }
 
     const db = drizzle(c.env.DB);
@@ -365,21 +266,23 @@ productRoutes.delete(
     const result = await db
       .update(products)
       .set({
-        isActive: false,
+        isDeleted: true,
         updatedAt: new Date().toISOString()
       })
-      .where(eq(products.id, id))
+      .where(
+        and(
+          eq(products.id, id),
+          eq(products.isDeleted, false)
+        )
+      )
       .returning({
         id: products.id,
         name: products.name,
-        isActive: products.isActive
+        isDeleted: products.isDeleted
       });
 
     if (result.length === 0) {
-      return c.json(
-        { error: "Product not found" },
-        404
-      );
+      return c.json({ error: "Product not found" }, 404);
     }
 
     return c.json({
