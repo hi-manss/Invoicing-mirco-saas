@@ -5,6 +5,7 @@ import type { Env } from "../types/env";
 import { invoiceItems, invoices } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { createInvoice } from "../services/invoice.service";
+import { generateInvoicePdf } from "../services/invoice-pdf.service";
 
 const invoiceRoutes = new Hono<{ Bindings: Env; Variables: { user: { id: number; name: string; email: string; role: number } } }>();
 invoiceRoutes.use("*", requireAuth);
@@ -13,6 +14,26 @@ invoiceRoutes.get("/", async (c) => {
   const db = drizzle(c.env.DB);
   const result = await db.select().from(invoices).where(eq(invoices.isDeleted, false)).orderBy(desc(invoices.id));
   return c.json({ invoices: result });
+});
+
+invoiceRoutes.get("/:id/pdf", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "Invalid invoice ID" }, 400);
+  const pdf = await generateInvoicePdf(c.env, id);
+  if (!pdf) return c.json({ error: "Invoice not found" }, 404);
+
+  const invoice = await c.env.DB.prepare("SELECT invoice_number FROM invoices WHERE id = ? AND is_deleted = 0")
+    .bind(id)
+    .first<{ invoice_number: string }>();
+
+  return new Response(pdf, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${invoice?.invoice_number ?? `invoice-${id}`}.pdf"`,
+      "Cache-Control": "private, no-store"
+    }
+  });
 });
 
 invoiceRoutes.get("/:id", async (c) => {
