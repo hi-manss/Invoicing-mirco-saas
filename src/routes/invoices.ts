@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Env } from "../types/env";
 import { invoiceItems, invoices } from "../db/schema";
@@ -23,8 +23,8 @@ invoiceRoutes.get("/", async (c) => {
   const params: unknown[] = [];
   if (search) { clauses.push("(i.invoice_number LIKE ? OR COALESCE(c.name, '') LIKE ?)"); params.push(`%${search}%`, `%${search}%`); }
   if (Number.isInteger(customerId) && customerId > 0) { clauses.push("i.customer_id = ?"); params.push(customerId); }
-  if (fromDate) { clauses.push("i.invoice_date >= ?"); params.push(fromDate); }
-  if (toDate) { clauses.push("i.invoice_date <= ?"); params.push(toDate); }
+  if (fromDate) { clauses.push("i.invoice_date >= ?"); params.push(`${fromDate}T00:00:00.000Z`); }
+  if (toDate) { clauses.push("i.invoice_date < ?"); params.push(`${toDate}T23:59:59.999Z`); }
   const where = clauses.join(" AND ");
   const result = await c.env.DB.prepare(`SELECT i.*, c.name AS customer_name FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id WHERE ${where} ORDER BY i.id DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
   const count = await c.env.DB.prepare(`SELECT COUNT(*) AS total FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id WHERE ${where}`).bind(...params).first<{ total: number }>();
@@ -44,11 +44,11 @@ invoiceRoutes.get("/:id/pdf", async (c) => {
 invoiceRoutes.get("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "Invalid invoice ID" }, 400);
+  const invoice = await c.env.DB.prepare("SELECT i.*, c.name AS customer_name FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id WHERE i.id = ? AND i.is_deleted = 0").bind(id).first();
+  if (!invoice) return c.json({ error: "Invoice not found" }, 404);
   const db = drizzle(c.env.DB);
-  const invoice = await db.select().from(invoices).where(and(eq(invoices.id, id), eq(invoices.isDeleted, false))).limit(1);
-  if (!invoice.length) return c.json({ error: "Invoice not found" }, 404);
   const items = await db.select().from(invoiceItems).where(and(eq(invoiceItems.invoiceId, id), eq(invoiceItems.isDeleted, false)));
-  return c.json({ invoice: invoice[0], items });
+  return c.json({ invoice, items });
 });
 
 invoiceRoutes.post("/", async (c) => {
@@ -66,21 +66,16 @@ invoiceRoutes.post("/:id/cancel", requireAdmin, async (c) => {
   const invoice = await c.env.DB.prepare("SELECT id, invoice_number, invoice_status FROM invoices WHERE id = ? AND is_deleted = 0").bind(id).first<{ id: number; invoice_number: string; invoice_status: number }>();
   if (!invoice) return c.json({ error: "Invoice not found" }, 404);
   if (invoice.invoice_status !== 0) return c.json({ error: "Invoice is already cancelled" }, 409);
-  const items = await c.env.DB.prepare("SELECT product_id, quantity, product_name FROM invoice_items WHERE invoice_id = ? AND is_deleted = 0").bind(id).all<{ product_id: number; quantity: number; product_name: string }>();
+  const items = await c.env.DB.prepare("SELECT product_id, quantity FROM invoice_items WHERE invoice_id = ? AND is_deleted = 0").bind(id).all<{ product_id: number; quantity: number }>();
   if (!items.results.length) return c.json({ error: "Invoice has no active items" }, 400);
-
-  const statements: D1PreparedStatement[] = [
-    c.env.DB.prepare("UPDATE invoices SET invoice_status = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0 AND invoice_status = 0").bind(id)
-  ];
+  const statements: D1PreparedStatement[] = [c.env.DB.prepare("UPDATE invoices SET invoice_status = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0 AND invoice_status = 0").bind(id)];
   for (const item of items.results) {
     statements.push(c.env.DB.prepare("UPDATE products SET stock_quantity = stock_quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(item.quantity, item.product_id));
     statements.push(c.env.DB.prepare("INSERT INTO inventory_movements (product_id, invoice_id, user_id, movement_type, quantity_change, stock_before, stock_after, reason) SELECT ?, ?, ?, 4, ?, stock_quantity - ?, stock_quantity, ? FROM products WHERE id = ?").bind(item.product_id, id, c.get("user").id, item.quantity, item.quantity, `Invoice cancellation: ${invoice.invoice_number}`, item.product_id));
   }
   const results = await c.env.DB.batch(statements);
   if (!results[0].success || (results[0].meta.changes ?? 0) !== 1) return c.json({ error: "Invoice was changed by another request; cancellation was not committed" }, 409);
-  for (let i = 1; i < results.length; i += 2) {
-    if (!results[i].success || (results[i].meta.changes ?? 0) !== 1) return c.json({ error: "Cancellation failed; transaction was rolled back" }, 400);
-  }
+  for (let i = 1; i < results.length; i += 2) if (!results[i].success || (results[i].meta.changes ?? 0) !== 1) return c.json({ error: "Cancellation failed; transaction was rolled back" }, 400);
   return c.json({ message: "Invoice cancelled", invoiceId: id, invoiceNumber: invoice.invoice_number });
 });
 
