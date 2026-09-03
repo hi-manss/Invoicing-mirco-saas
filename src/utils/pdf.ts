@@ -29,7 +29,7 @@ export function createPdfPage(texts: PdfText[], lines: PdfLine[] = []): string {
   for (const item of texts) {
     const font = item.bold ? "/F2" : "/F1";
     const size = item.size ?? 10;
-    commands.push(`${font} ${size} Tf ${item.x} ${item.y} Td (${escapePdfText(item.text)}) Tj 0 -0 Td`);
+    commands.push(`${font} ${size} Tf 1 0 0 1 ${item.x} ${item.y} Tm (${escapePdfText(item.text)}) Tj`);
   }
   commands.push("ET");
   for (const line of lines) {
