@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "invoicing-mirco-saas",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-03",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "invoicing-db",
+      "database_id": "5875776b-5307-49f8-a90a-25fe80d8c76b",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

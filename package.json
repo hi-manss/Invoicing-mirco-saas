@@ -1,0 +1,36 @@
+{
+  "name": "invoicing-mirco-saas",
+  "version": "1.0.0",
+  "description": "Backend",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply invoicing-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply invoicing-db --remote"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hi-manss/Invoicing-mirco-saas.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hi-manss/Invoicing-mirco-saas/issues"
+  },
+  "homepage": "https://github.com/hi-manss/Invoicing-mirco-saas#readme",
+ "dependencies": {
+    "drizzle-orm": "latest",
+    "hono": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "drizzle-kit": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+  
+}
