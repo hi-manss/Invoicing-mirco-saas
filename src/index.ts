@@ -8,6 +8,7 @@ import customers from "./routes/customers";
 import invoices from "./routes/invoices";
 import inventory from "./routes/inventory";
 import business from "./routes/business";
+import accounting from "./routes/accounting";
 import { ensureBootstrapAdmin } from "./services/bootstrap.service";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -28,6 +29,7 @@ app.use("*", async (c, next) => { await ensureBootstrapAdmin(c.env); await next(
 app.route("/api/auth", auth);
 app.route("/api/admin", admin);
 app.route("/api/business", business);
+app.route("/api/accounting", accounting);
 app.route("/api/products", products);
 app.route("/api/customers", customers);
 app.route("/api/invoices", invoices);
