@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import type { Env } from "../types/env";
@@ -24,6 +24,7 @@ customerRoutes.get("/", requireAuth, async (c) => {
   const result = await db
     .select()
     .from(customers)
+    .where(eq(customers.isDeleted, false))
     .orderBy(desc(customers.id));
 
   return c.json({ customers: result });
@@ -41,7 +42,12 @@ customerRoutes.get("/:id", requireAuth, async (c) => {
   const result = await db
     .select()
     .from(customers)
-    .where(eq(customers.id, id))
+    .where(
+      and(
+        eq(customers.id, id),
+        eq(customers.isDeleted, false)
+      )
+    )
     .limit(1);
 
   if (result.length === 0) {
@@ -80,7 +86,8 @@ customerRoutes.post(
         phone: body.phone?.trim() || null,
         email: body.email?.trim() || null,
         address: body.address?.trim() || null,
-        gstin: body.gstin?.trim().toUpperCase() || null
+        gstin: body.gstin?.trim().toUpperCase() || null,
+        isDeleted: false
       })
       .returning();
 
@@ -131,18 +138,15 @@ customerRoutes.put(
     }
 
     if (body.phone !== undefined) {
-      updateData.phone =
-        body.phone?.trim() || null;
+      updateData.phone = body.phone?.trim() || null;
     }
 
     if (body.email !== undefined) {
-      updateData.email =
-        body.email?.trim() || null;
+      updateData.email = body.email?.trim() || null;
     }
 
     if (body.address !== undefined) {
-      updateData.address =
-        body.address?.trim() || null;
+      updateData.address = body.address?.trim() || null;
     }
 
     if (body.gstin !== undefined) {
@@ -155,14 +159,16 @@ customerRoutes.put(
     const result = await db
       .update(customers)
       .set(updateData)
-      .where(eq(customers.id, id))
+      .where(
+        and(
+          eq(customers.id, id),
+          eq(customers.isDeleted, false)
+        )
+      )
       .returning();
 
     if (result.length === 0) {
-      return c.json(
-        { error: "Customer not found" },
-        404
-      );
+      return c.json({ error: "Customer not found" }, 404);
     }
 
     return c.json({
@@ -186,10 +192,21 @@ customerRoutes.delete(
     const db = drizzle(c.env.DB);
 
     const result = await db
-      .delete(customers)
-      .where(eq(customers.id, id))
+      .update(customers)
+      .set({
+        isDeleted: true,
+        updatedAt: new Date().toISOString()
+      })
+      .where(
+        and(
+          eq(customers.id, id),
+          eq(customers.isDeleted, false)
+        )
+      )
       .returning({
-        id: customers.id
+        id: customers.id,
+        name: customers.name,
+        isDeleted: customers.isDeleted
       });
 
     if (result.length === 0) {
@@ -200,7 +217,8 @@ customerRoutes.delete(
     }
 
     return c.json({
-      message: "Customer deleted"
+      message: "Customer deleted",
+      customer: result[0]
     });
   }
 );
