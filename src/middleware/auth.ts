@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { getCookie } from "hono/cookie";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import type { Env } from "../types/env";
@@ -41,7 +41,8 @@ export const requireAuth = createMiddleware<{
       name: users.name,
       email: users.email,
       role: users.role,
-      isActive: users.isActive,
+      userIsDeleted: users.isDeleted,
+      sessionIsDeleted: sessions.isDeleted,
       expiresAt: sessions.expiresAt
     })
     .from(sessions)
@@ -50,7 +51,11 @@ export const requireAuth = createMiddleware<{
       eq(users.id, sessions.userId)
     )
     .where(
-      eq(sessions.tokenHash, tokenHash)
+      and(
+        eq(sessions.tokenHash, tokenHash),
+        eq(sessions.isDeleted, false),
+        eq(users.isDeleted, false)
+      )
     )
     .limit(1);
 
@@ -63,16 +68,14 @@ export const requireAuth = createMiddleware<{
     );
   }
 
-  if (!session.isActive) {
+  if (session.userIsDeleted || session.sessionIsDeleted) {
     return c.json(
-      { error: "Account is inactive" },
-      403
+      { error: "Account is deleted" },
+      401
     );
   }
 
-  if (
-    new Date(session.expiresAt) <= new Date()
-  ) {
+  if (new Date(session.expiresAt) <= new Date()) {
     return c.json(
       { error: "Session expired" },
       401

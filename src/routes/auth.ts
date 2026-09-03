@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import type { Env } from "../types/env";
@@ -120,8 +120,14 @@ auth.post("/logout", async (c) => {
     const db = drizzle(c.env.DB);
 
     await db
-      .delete(sessions)
-      .where(eq(sessions.tokenHash, tokenHash));
+      .update(sessions)
+      .set({ isDeleted: true })
+      .where(
+        and(
+          eq(sessions.tokenHash, tokenHash),
+          eq(sessions.isDeleted, false)
+        )
+      );
   }
 
   deleteCookie(c, SESSION_COOKIE, {
@@ -153,12 +159,19 @@ auth.get("/me", async (c) => {
       name: users.name,
       email: users.email,
       role: users.role,
-      isActive: users.isActive,
+      isDeleted: users.isDeleted,
+      sessionIsDeleted: sessions.isDeleted,
       expiresAt: sessions.expiresAt
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
-    .where(eq(sessions.tokenHash, tokenHash))
+    .where(
+      and(
+        eq(sessions.tokenHash, tokenHash),
+        eq(sessions.isDeleted, false),
+        eq(users.isDeleted, false)
+      )
+    )
     .limit(1);
 
   const session = result[0];
@@ -171,7 +184,8 @@ auth.get("/me", async (c) => {
   }
 
   if (
-    !session.isActive ||
+    session.isDeleted ||
+    session.sessionIsDeleted ||
     new Date(session.expiresAt) <= new Date()
   ) {
     return c.json(

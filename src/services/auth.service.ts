@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import { users, sessions } from "../db/schema";
@@ -30,7 +30,8 @@ export async function createUser(
       name,
       email: email.toLowerCase().trim(),
       passwordHash,
-      role
+      role,
+      isDeleted: false
     })
     .returning({
       id: users.id,
@@ -52,10 +53,15 @@ export async function authenticateUser(
   const user = await db
     .select()
     .from(users)
-    .where(eq(users.email, email.toLowerCase().trim()))
+    .where(
+      and(
+        eq(users.email, email.toLowerCase().trim()),
+        eq(users.isDeleted, false)
+      )
+    )
     .limit(1);
 
-  if (!user[0] || !user[0].isActive) {
+  if (!user[0]) {
     return null;
   }
 
@@ -84,7 +90,8 @@ export async function createSession(
   await db.insert(sessions).values({
     userId,
     tokenHash,
-    expiresAt
+    expiresAt,
+    isDeleted: false
   });
 
   return token;

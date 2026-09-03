@@ -26,9 +26,9 @@ export const users = sqliteTable(
 
     role: integer("role").notNull().default(0),
 
-    isActive: integer("is_active", { mode: "boolean" })
+    isDeleted: integer("is_deleted", { mode: "boolean" })
       .notNull()
-      .default(true),
+      .default(false),
 
     createdAt: text("created_at")
       .notNull()
@@ -40,7 +40,8 @@ export const users = sqliteTable(
   },
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
-    index("users_role_idx").on(table.role)
+    index("users_role_idx").on(table.role),
+    index("users_deleted_idx").on(table.isDeleted)
   ]
 );
 
@@ -60,13 +61,18 @@ export const sessions = sqliteTable(
 
     expiresAt: text("expires_at").notNull(),
 
+    isDeleted: integer("is_deleted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+
     createdAt: text("created_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`)
   },
   (table) => [
     uniqueIndex("sessions_token_unique").on(table.tokenHash),
-    index("sessions_user_idx").on(table.userId)
+    index("sessions_user_idx").on(table.userId),
+    index("sessions_deleted_idx").on(table.isDeleted)
   ]
 );
 
@@ -97,9 +103,9 @@ export const products = sqliteTable(
 
     stockQuantity: integer("stock_quantity").notNull().default(0),
 
-    isActive: integer("is_active", { mode: "boolean" })
+    isDeleted: integer("is_deleted", { mode: "boolean" })
       .notNull()
-      .default(true),
+      .default(false),
 
     createdAt: text("created_at")
       .notNull()
@@ -111,7 +117,8 @@ export const products = sqliteTable(
   },
   (table) => [
     uniqueIndex("products_sku_unique").on(table.sku),
-    index("products_name_idx").on(table.name)
+    index("products_name_idx").on(table.name),
+    index("products_deleted_idx").on(table.isDeleted)
   ]
 );
 
@@ -133,6 +140,10 @@ export const customers = sqliteTable(
 
     gstin: text("gstin"),
 
+    isDeleted: integer("is_deleted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+
     createdAt: text("created_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -143,7 +154,8 @@ export const customers = sqliteTable(
   },
   (table) => [
     index("customers_name_idx").on(table.name),
-    index("customers_phone_idx").on(table.phone)
+    index("customers_phone_idx").on(table.phone),
+    index("customers_deleted_idx").on(table.isDeleted)
   ]
 );
 
@@ -160,8 +172,7 @@ export const invoices = sqliteTable(
     customerId: integer("customer_id")
       .references(() => customers.id, { onDelete: "set null" }),
 
-    invoiceDate: text("invoice_date")
-      .notNull(),
+    invoiceDate: text("invoice_date").notNull(),
 
     subtotalPaise: integer("subtotal_paise").notNull(),
 
@@ -169,19 +180,43 @@ export const invoices = sqliteTable(
 
     totalAmountPaise: integer("total_amount_paise").notNull(),
 
-    paymentMethod: text("payment_method")
+    /**
+     * Payment method enum stored as integer.
+     * 0 = CASH
+     * 1 = UPI
+     * 2 = BANK
+     * 3 = CREDIT
+     * 4 = OTHER
+     */
+    paymentMethod: integer("payment_method")
       .notNull()
-      .default("PENDING"),
+      .default(0),
 
-    paymentStatus: text("payment_status")
+    /**
+     * Payment status enum stored as integer.
+     * 0 = PENDING
+     * 1 = PAID
+     * 2 = PARTIAL
+     * 3 = FAILED
+     * 4 = REFUNDED
+     */
+    paymentStatus: integer("payment_status")
       .notNull()
-      .default("PENDING"),
+      .default(0),
 
     createdBy: integer("created_by")
       .notNull()
       .references(() => users.id),
 
+    isDeleted: integer("is_deleted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+
     createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+
+    updatedAt: text("updated_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`)
   },
@@ -189,7 +224,8 @@ export const invoices = sqliteTable(
     uniqueIndex("invoices_number_unique").on(table.invoiceNumber),
     index("invoices_customer_idx").on(table.customerId),
     index("invoices_created_by_idx").on(table.createdBy),
-    index("invoices_date_idx").on(table.invoiceDate)
+    index("invoices_date_idx").on(table.invoiceDate),
+    index("invoices_deleted_idx").on(table.isDeleted)
   ]
 );
 
@@ -222,10 +258,15 @@ export const invoiceItems = sqliteTable(
 
     gstAmountPaise: integer("gst_amount_paise").notNull(),
 
-    lineTotalPaise: integer("line_total_paise").notNull()
+    lineTotalPaise: integer("line_total_paise").notNull(),
+
+    isDeleted: integer("is_deleted", { mode: "boolean" })
+      .notNull()
+      .default(false)
   },
   (table) => [
     index("invoice_items_invoice_idx").on(table.invoiceId),
-    index("invoice_items_product_idx").on(table.productId)
+    index("invoice_items_product_idx").on(table.productId),
+    index("invoice_items_deleted_idx").on(table.isDeleted)
   ]
 );
