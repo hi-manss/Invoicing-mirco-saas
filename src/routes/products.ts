@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Env } from "../types/env";
 import { products } from "../db/schema";
@@ -7,32 +7,24 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const productRoutes = new Hono<{ Bindings: Env; Variables: { user: { id: number; name: string; email: string; role: number } } }>();
 
-function pagination(c: any) {
-  const page = Math.max(1, Number(c.req.query("page") || 1));
-  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") || 20)));
-  return { page: Number.isInteger(page) ? page : 1, limit: Number.isInteger(limit) ? limit : 20 };
+function getPagination(c: any) {
+  const rawPage = Number(c.req.query("page") || 1);
+  const rawLimit = Number(c.req.query("limit") || 20);
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+  return { page, limit, offset: (page - 1) * limit };
 }
 
 productRoutes.get("/", requireAuth, async (c) => {
   const db = drizzle(c.env.DB);
-  const { page, limit } = pagination(c);
+  const { page, limit, offset } = getPagination(c);
   const search = c.req.query("search")?.trim();
-  const offset = (page - 1) * limit;
-  const where = search
-    ? and(eq(products.isDeleted, false), db.run(sqlLike(search)))
-    : eq(products.isDeleted, false);
+  const where = search ? and(eq(products.isDeleted, false), or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`))) : eq(products.isDeleted, false);
   const result = await db.select().from(products).where(where).orderBy(desc(products.id)).limit(limit).offset(offset);
-  const countResult = await c.env.DB.prepare(
-    search
-      ? "SELECT COUNT(*) AS total FROM products WHERE is_deleted = 0 AND (name LIKE ? OR sku LIKE ?)"
-      : "SELECT COUNT(*) AS total FROM products WHERE is_deleted = 0"
-  ).bind(...(search ? [`%${search}%`, `%${search}%`] : [])).first<{ total: number }>();
-  return c.json({ products: result, pagination: { page, limit, total: countResult?.total ?? 0, totalPages: Math.ceil((countResult?.total ?? 0) / limit) } });
+  const countResult = await c.env.DB.prepare(search ? "SELECT COUNT(*) AS total FROM products WHERE is_deleted = 0 AND (name LIKE ? OR sku LIKE ?)" : "SELECT COUNT(*) AS total FROM products WHERE is_deleted = 0").bind(...(search ? [`%${search}%`, `%${search}%`] : [])).first<{ total: number }>();
+  const total = countResult?.total ?? 0;
+  return c.json({ products: result, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
-
-function sqlLike(search: string) {
-  return { toSQL: () => ({ sql: "(name LIKE ? OR sku LIKE ?)", params: [`%${search}%`, `%${search}%`] }) } as never;
-}
 
 productRoutes.get("/:id", requireAuth, async (c) => {
   const id = Number(c.req.param("id"));
@@ -51,10 +43,7 @@ productRoutes.post("/", requireAuth, requireAdmin, async (c) => {
   if (!Number.isInteger(gstRate) || gstRate < 0 || gstRate > 100) return c.json({ error: "GST rate must be between 0 and 100" }, 400);
   if (!Number.isInteger(stockQuantity) || stockQuantity < 0) return c.json({ error: "Stock quantity must be a non-negative integer" }, 400);
   const db = drizzle(c.env.DB);
-  try {
-    const result = await db.insert(products).values({ name: body.name.trim(), sku: body.sku.trim(), hsnCode: body.hsnCode?.trim() || null, unit: body.unit?.trim() || "PCS", sellingPricePaise: body.sellingPricePaise, gstRate, stockQuantity, isDeleted: false }).returning();
-    return c.json({ message: "Product created", product: result[0] }, 201);
-  } catch { return c.json({ error: "SKU already exists" }, 409); }
+  try { const result = await db.insert(products).values({ name: body.name.trim(), sku: body.sku.trim(), hsnCode: body.hsnCode?.trim() || null, unit: body.unit?.trim() || "PCS", sellingPricePaise: body.sellingPricePaise, gstRate, stockQuantity, isDeleted: false }).returning(); return c.json({ message: "Product created", product: result[0] }, 201); } catch { return c.json({ error: "SKU already exists" }, 409); }
 });
 
 productRoutes.put("/:id", requireAuth, requireAdmin, async (c) => {
