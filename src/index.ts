@@ -5,6 +5,7 @@ import type { Env } from "./types/env";
 import auth from "./routes/auth";
 import admin from "./routes/admin";
 import products from "./routes/products";
+import customers from "./routes/customers";
 
 import {
   ensureBootstrapAdmin
@@ -37,5 +38,6 @@ app.use("*", async (c, next) => {
 app.route("/api/auth", auth);
 app.route("/api/admin", admin);
 app.route("/api/products", products);
+app.route("/api/customers", customers);
 
 export default app;
